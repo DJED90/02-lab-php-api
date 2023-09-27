@@ -31,14 +31,23 @@ switch ($methodrequest) {
 
     case 'POST':
         if(isset($_POST['link']) && !empty($_POST['link'])){
-
-        
-            // Préparer la requête SQL d'insertion
-            $sql = 'INSERT INTO Ressources(link) VALUES(:link)';
+            // Préparer la requête SQL d'insertion de la ressource
+            $sql = 'INSERT INTO Ressources(link, technology_id) VALUES(:link, :technology_id)';
             $sth = $conn->prepare($sql);
+    
+            // Bind des paramètres
             $sth->bindParam(':link', $_POST['link'], PDO::PARAM_STR);
-            $sth->execute();
-            
+    
+            if(isset($_POST['technology_id'])){
+                $technologyArray = json_decode($_POST['technology_id']);
+                if(is_array($technologyArray)){
+                    // Boucle à travers les IDs de technologie et insérez la ressource pour chaque technologie
+                    foreach($technologyArray as $technologyId){
+                        $sth->bindParam(':technology_id', $technologyId, PDO::PARAM_INT);
+                        $sth->execute();
+                    }
+                }
+            }
             // JE SIGNALE L'UTILISATEUR QUE LA REQUETE EST UN SUCCES
             echo json_encode(['status' => 'success', 'message' => 'Ressource added']);
         } else {
