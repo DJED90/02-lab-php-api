@@ -2,63 +2,87 @@
 
 switch ($methodrequest) {
 
-    // AFFICHE LES TECHNOLOGIES ET LES CATEGORIES/RESSOURCES ASSOCIÉS
-    case 'GET':
-        if (isset($uriParts[1])) {
-            $sql =
-                'SELECT
-                t.id AS technology_id,
-                t.name AS technology_name,
-                t.logo_path AS technology_logo_path,
-                t.logoname AS technology_logoname,
-                c.id AS categories_id,
-                r.id AS technology_resource_id
-            FROM
-                technology t
-            LEFT JOIN
-                Ressources r ON t.id = r.technology_id
-            LEFT JOIN
-                technology_categories tc ON t.id = tc.technology_id
-            LEFT JOIN
-                categories c ON tc.categories_id = c.id
-            WHERE t.id = :id';
+// AFFICHE LES TECHNOLOGIES ET LES CATEGORIES/RESSOURCES ASSOCIÉS
+case 'GET':
+    if (isset($uriParts[1])) {
+        $sql =
+            'SELECT
+            t.id AS technology_id,
+            t.name AS technology_name,
+            t.logo_path AS technology_logo_path,
+            t.logoname AS technology_logoname,
+            GROUP_CONCAT(DISTINCT c.id) AS categories_ids,
+            GROUP_CONCAT(r.id) AS technology_resource_ids
+        FROM
+            technology t
+        LEFT JOIN
+            Ressources r ON t.id = r.technology_id
+        LEFT JOIN
+            technology_categories tc ON t.id = tc.technology_id
+        LEFT JOIN
+            categories c ON tc.categories_id = c.id
+        WHERE t.id = :id
+        GROUP BY t.id, t.name, t.logo_path, t.logoname';
 
-            $sth = $conn->prepare($sql);
-            $sth->bindParam(':id', $uriParts[1], PDO::PARAM_INT);
-            $sth->execute();
+        $sth = $conn->prepare($sql);
+        $sth->bindParam(':id', $uriParts[1], PDO::PARAM_INT);
+        $sth->execute();
 
-            // JE RECUPERE LES RESULTATS DE LA REQUETE SONT FORME DE TABLEAU.
-            $result = $sth->fetchAll(PDO::FETCH_ASSOC);
+        // JE RECUPERE LES RESULTATS DE LA REQUETE SONT FORME DE TABLEAU.
+        $result = $sth->fetch(PDO::FETCH_ASSOC);
 
-            // JE RENVOI LES RESULTATS EN FORMAT JSON
-            echo json_encode(['status' => 'success', 'data' => $result]);
-        } else {
-            $sql =
-                'SELECT
-                t.id AS technology_id,
-                t.name AS technology_name,
-                t.logo_path AS technology_logo_path,
-                t.logoname AS technology_logoname,
-                c.id AS categories_id,
-                r.id AS technology_resource_id
-            FROM
-                technology t
-            LEFT JOIN
-                Ressources r ON t.id = r.technology_id
-            LEFT JOIN
-                technology_categories tc ON t.id = tc.technology_id
-            LEFT JOIN
-                categories c ON tc.categories_id = c.id';
-            $sth = $conn->prepare($sql);
-            $sth->execute();
-            //JE RECUPERE LES RESULTATS
-            $result = $sth->fetchAll(PDO::FETCH_ASSOC);
-
-            //JE RENVOI LES SULTATS EN FORMAT JSON
-
-            echo json_encode(['status' => 'success', 'data' => $result]);
+        // Si GROUP_CONCAT retourne NULL, on met une chaîne vide
+        if ($result['categories_ids'] === null) {
+            $result['categories_ids'] = '';
         }
-        break;
+
+        if ($result['technology_resource_ids'] === null) {
+            $result['technology_resource_ids'] = '';
+        }
+
+        // JE RENVOI LES RESULTATS EN FORMAT JSON
+        echo json_encode(['status' => 'success', 'data' => $result]);
+    } else {
+        $sql =
+            'SELECT
+            t.id AS technology_id,
+            t.name AS technology_name,
+            t.logo_path AS technology_logo_path,
+            t.logoname AS technology_logoname,
+            GROUP_CONCAT(DISTINCT c.id) AS categories_ids,
+            GROUP_CONCAT(r.id) AS technology_resource_ids
+        FROM
+            technology t
+        LEFT JOIN
+            Ressources r ON t.id = r.technology_id
+        LEFT JOIN
+            technology_categories tc ON t.id = tc.technology_id
+        LEFT JOIN
+            categories c ON tc.categories_id = c.id
+        GROUP BY t.id, t.name, t.logo_path, t.logoname';
+
+        $sth = $conn->prepare($sql);
+        $sth->execute();
+
+        // JE RECUPERE LES RESULTATS DE LA REQUETE SONT FORME DE TABLEAU.
+        $result = $sth->fetchAll(PDO::FETCH_ASSOC);
+
+        // Si GROUP_CONCAT retourne NULL pour certaines lignes, on met une chaîne vide
+        foreach ($result as &$row) {
+            if ($row['categories_ids'] === null) {
+                $row['categories_ids'] = '';
+            }
+
+            if ($row['technology_resource_ids'] === null) {
+                $row['technology_resource_ids'] = '';
+            }
+        }
+
+        //JE RENVOI LES SULTATS EN FORMAT JSON
+        echo json_encode(['status' => 'success', 'data' => $result]);
+    }
+    break;
+
 
     case 'POST':
         if (isset($_POST['name']) && !empty($_POST['name'])) {
@@ -114,16 +138,75 @@ switch ($methodrequest) {
         break;
 
     case 'PUT':
-        parse_str(file_get_contents("php://input"), $_PUT);
-        if(isset($uriParts[1]) && isset($_PUT['link']) && !empty($_PUT['link'])){
-            $sql = 'UPDATE Ressources SET link = :link WHERE id = :id';
-            $sth = $conn->prepare($sql);
-            $sth->bindParam(':id', $uriParts[1], PDO::PARAM_INT);
-            $sth->bindParam(':link', $_PUT['link'], PDO::PARAM_STR);
-            $sth->execute();
-            echo json_encode(['status' => 'success', 'message' => 'Ressource updated']);
+        $headers = getallheaders();
+        $logo = file_get_contents("php://input");
+        
+        // Obtenez l'ID de la technologie à partir de l'URL
+        $technologyId = $uriParts[1];
+        
+        // Récupérez le nom de la technologie à partir de la base de données
+        $sql = 'SELECT name FROM technology WHERE id = :id';
+        $sth = $conn->prepare($sql);
+        $sth->bindParam(':id', $technologyId, PDO::PARAM_INT);
+        $sth->execute();
+        $result = $sth->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result) {
+            $technologyName = $result['name']; // Obtenez le nom de la technologie
+    
+            // Vérifiez si le fichier est une image
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mime = $finfo->buffer($logo);
+            
+            if (in_array($mime, ['image/jpeg', 'image/png', 'image/gif']) && isset($technologyId)) {
+                
+                if (isset($headers['name']) && isset($headers['categories_id'])) {
+                    $conn->beginTransaction();
+                    $targetDirectory = '/var/www/html/logo/'; // Répertoire de destination sur le serveur
+                    $technologyName = $result['name']; // Obtenez le nom de la technologie
+                    // Utilisez une expression régulière pour extraire l'extension
+                    if (preg_match('/\/([a-zA-Z]+)$/', $mime, $matches)) {
+                        $extensionExtraite = $matches[1];
+                    } else {
+                        echo json_encode(['status' => 'failed', 'message' => 'Extension not found']);
+                    }
+                    $logofile = file_put_contents($targetDirectory.$technologyName . "." . $extensionExtraite, $logo); // Enregistre le contenu binaire dans le fichier temporaire
+                    //On récupère le nom du fichier pour l'inscrire sur la base de données 
+                    $logoname = $technologyName . "." . $extensionExtraite;
+                    //On récupère le repertoire du fichier pour l'inscrire sur la base de données
+                    $host = $_SERVER['HTTP_HOST'];
+                    $targetDirectory = $host . '/logo/';
+                    $logopath = $targetDirectory . $logoname ; 
+                    // Mettez à jour la table 'technology' avec le nouveau nom du fichier
+                    $sql1 = 'UPDATE technology SET name = :name, logoname = :logo, logo_path= :logopath WHERE id = :id';
+                    $sth1 = $conn->prepare($sql1);
+                    $sth1->bindParam(':id', $technologyId, PDO::PARAM_INT);
+                    $sth1->bindParam(':name', $headers['name'], PDO::PARAM_STR);
+                    $sth1->bindParam(':logo', $logoname, PDO::PARAM_STR); // Stockez le nom du fichier dans la colonne "logo"
+                    $sth1->bindParam(':logopath', $logopath, PDO::PARAM_STR); 
+                    $sth1->execute();
+    
+    
+                    // Mettez à jour la table 'technology_categories' (si nécessaire)
+                    if (isset($headers['categories_id'])) {
+                        $sql2 = 'UPDATE technology_categories SET categories_id = :categories_id WHERE technology_id = :id';
+                        $sth2 = $conn->prepare($sql2);
+                        $sth2->bindParam(':id', $technologyId, PDO::PARAM_INT);
+                        $sth2->bindParam(':categories_id', $headers['categories_id'], PDO::PARAM_INT);
+                        $sth2->execute();
+                    }
+    
+                    // Validez la transaction
+                    $conn->commit();
+                    echo json_encode(['status' => 'success', 'message' => 'Technology updated']);
+                } else {
+                    echo json_encode(['status' => 'failure', 'message' => 'Invalid request']);
+                }
+            } else {
+                echo json_encode(['status' => 'failure', 'message' => 'Invalid image format']);
+            }
         } else {
-            echo json_encode(['status' => 'failure', 'message' => 'Invalid request']);
+            echo json_encode(['status' => 'failure', 'message' => 'Technology not found']);
         }
         break;
 

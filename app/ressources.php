@@ -30,19 +30,16 @@ switch ($methodrequest) {
         break;
 
     case 'POST':
-        if(isset($_POST['link']) && !empty($_POST['link'])){
-            // Préparer la requête SQL d'insertion de la ressource
-            $sql = 'INSERT INTO Ressources(link, technology_id) VALUES(:link, :technology_id)';
-            $sth = $conn->prepare($sql);
-    
-            // Bind des paramètres
-            $sth->bindParam(':link', $_POST['link'], PDO::PARAM_STR);
-    
-            if(isset($_POST['technology_id'])){
+        if (isset($_POST['link']) && !empty($_POST['link'])) {
+            // Si vous avez également un champ 'technology_id', vous pouvez le spécifier ici
+            if (isset($_POST['technology_id'])) {
                 $technologyArray = json_decode($_POST['technology_id']);
-                if(is_array($technologyArray)){
+                if (is_array($technologyArray)) {
                     // Boucle à travers les IDs de technologie et insérez la ressource pour chaque technologie
-                    foreach($technologyArray as $technologyId){
+                    foreach ($technologyArray as $technologyId) {
+                        $sql = 'INSERT INTO Ressources (link, technology_id) VALUES (:link, :technology_id)';
+                        $sth = $conn->prepare($sql);
+                        $sth->bindParam(':link', $_POST['link'], PDO::PARAM_STR);
                         $sth->bindParam(':technology_id', $technologyId, PDO::PARAM_INT);
                         $sth->execute();
                     }
