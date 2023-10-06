@@ -29,23 +29,39 @@ switch ($methodrequest) {
         }
         break;
 
-    case 'POST':
-        if(isset($_POST['name']) && !empty($_POST['name'])){
-
+        case 'POST':
+            if (isset($_POST['name']) && !empty($_POST['name'])) {
+                $name = $_POST['name'];
         
-            // Préparer la requête SQL d'insertion
-            $sql = 'INSERT INTO categories(name) VALUES(:name)';
-            $sth = $conn->prepare($sql);
-            $sth->bindParam(':name', $_POST['name'], PDO::PARAM_STR);
-            $sth->execute();
-            
-            // JE SIGNALE L'UTILISATEUR QUE LA REQUETE EST UN SUCCES
-            echo json_encode(['status' => 'success', 'message' => 'Category added']);
-        } else {
-            // JE SIGNALE L'UTILISATEUR QUE LA REQUETE EST UN ECHEC
-            echo json_encode(['status' => 'failure', 'message' => 'Name not found']);
-        }
-        break;
+                // Vérifiez d'abord si le nom de la catégorie existe déjà dans la base de données
+                $checkSql = 'SELECT COUNT(*) FROM categories WHERE name = :name';
+                $checkSth = $conn->prepare($checkSql);
+                $checkSth->bindParam(':name', $name, PDO::PARAM_STR);
+                $checkSth->execute();
+                $count = $checkSth->fetchColumn();
+        
+                if ($count === false) {
+                    // Erreur de requête, vous pouvez gérer cela selon votre cas
+                    echo json_encode(['status' => 'failure', 'message' => 'Database query error']);
+                } elseif ($count == 0) {
+                    // Le nom de la catégorie n'existe pas encore, procédez à l'insertion
+                    $sql = 'INSERT INTO categories (name) VALUES (:name)';
+                    $sth = $conn->prepare($sql);
+                    $sth->bindParam(':name', $name, PDO::PARAM_STR);
+                    $sth->execute();
+        
+                    // Signalez à l'utilisateur que l'insertion est un succès
+                    echo json_encode(['status' => 'success', 'message' => 'Category added']);
+                } else {
+                    // Le nom de la catégorie existe déjà, signalez-le
+                    echo json_encode(['status' => 'failure', 'message' => 'Category already exists']);
+                }
+            } else {
+                // JE SIGNALE L'UTILISATEUR QUE LA REQUETE EST UN ECHEC
+                echo json_encode(['status' => 'failure', 'message' => 'Name not found']);
+            }
+            break;
+        
 
         case 'PUT':
             parse_str(file_get_contents("php://input"), $_PUT);
